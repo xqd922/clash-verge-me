@@ -53,6 +53,24 @@ impl CoreManager {
         if service::check_service().await.is_ok() {
             log::info!(target: "app", "stop the core by service");
             service::stop_core_by_service().await?;
+        } else {
+            // Sidecar 模式 - 通过进程名杀死
+            log::info!(target: "app", "Stopping sidecar");
+            #[cfg(target_os = "windows")]
+            {
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/F", "/IM", "verge-mihomo.exe"])
+                    .output();
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/F", "/IM", "verge-mihomo-alpha.exe"])
+                    .output();
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let _ = std::process::Command::new("pkill")
+                    .args(["-f", "verge-mihomo"])
+                    .output();
+            }
         }
         *running = false;
         Ok(())
@@ -72,6 +90,30 @@ impl CoreManager {
         if service::check_service().await.is_ok() {
             log::info!(target: "app", "try to run core in service mode");
             service::run_core_by_service(&config_path).await?;
+        } else {
+            // Sidecar 模式
+            log::info!(target: "app", "Starting core in sidecar mode");
+
+            let clash_core = { Config::verge().latest().clash_core.clone() };
+            let clash_core = clash_core.unwrap_or("verge-mihomo".into());
+
+            let app_handle = handle::Handle::global().app_handle().unwrap();
+            let config_dir = dirs::app_home_dir()?;
+            let config_dir = dirs::path_to_str(&config_dir)?;
+            let config_file = dirs::path_to_str(&config_path)?;
+
+            let (_, child) = app_handle
+                .shell()
+                .sidecar(clash_core)?
+                .args(["-d", config_dir, "-f", config_file])
+                .spawn()?;
+
+            // 存储子进程以便后续管理
+            std::mem::forget(child);
+
+            // 等待核心启动
+            sleep(Duration::from_millis(500)).await;
+            log::info!(target: "app", "Sidecar core started");
         }
         // 流量订阅
         #[cfg(target_os = "macos")]
