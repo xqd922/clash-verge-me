@@ -283,6 +283,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
 
         if tun_mode.is_some() {
             should_update_clash_config = true;
+            should_restart_core = true;
             should_update_systray_menu = true;
             should_update_systray_tooltip = true;
             should_update_systray_icon = true;

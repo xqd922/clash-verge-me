@@ -1,7 +1,7 @@
 import useSWR from "swr";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLockFn } from "ahooks";
-import { Box, Button, IconButton, Stack, Divider, Grid2 } from "@mui/material";
+import { Box, Button, IconButton, Stack, Grid2 } from "@mui/material";
 import {
   DndContext,
   closestCenter,
@@ -34,18 +34,17 @@ import {
   reorderProfile,
   createProfile,
 } from "@/services/cmds";
-import { useSetLoadingCache, useThemeMode } from "@/services/states";
+import { useSetLoadingCache } from "@/services/states";
 import { closeAllConnections } from "@/services/api";
 import { BasePage, DialogRef, Notice } from "@/components/base";
 import {
   ProfileViewer,
   ProfileViewerRef,
 } from "@/components/profile/profile-viewer";
-import { ProfileMore } from "@/components/profile/profile-more";
 import { ProfileItem } from "@/components/profile/profile-item";
 import { useProfiles } from "@/hooks/use-profiles";
 import { ConfigViewer } from "@/components/setting/mods/config-viewer";
-import { add, throttle } from "lodash-es";
+import { throttle } from "lodash-es";
 import { BaseStyledTextField } from "@/components/base/base-styled-text-field";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
@@ -116,10 +115,7 @@ const ProfilePage = () => {
     mutateProfiles,
   } = useProfiles();
 
-  const { data: chainLogs = {}, mutate: mutateLogs } = useSWR(
-    "getRuntimeLogs",
-    getRuntimeLogs,
-  );
+  const { mutate: mutateLogs } = useSWR("getRuntimeLogs", getRuntimeLogs);
 
   const viewerRef = useRef<ProfileViewerRef>(null);
   const configRef = useRef<DialogRef>(null);
@@ -266,12 +262,6 @@ const ProfilePage = () => {
     if (text) setUrl(text);
   };
 
-  const mode = useThemeMode();
-  const islight = mode === "light" ? true : false;
-  const dividercolor = islight
-    ? "rgba(0, 0, 0, 0.06)"
-    : "rgba(255, 255, 255, 0.06)";
-
   return (
     <BasePage
       full
@@ -409,36 +399,6 @@ const ProfilePage = () => {
                   </Grid2>
                 ))}
               </SortableContext>
-            </Grid2>
-          </Box>
-          <Divider
-            variant="middle"
-            flexItem
-            sx={{ width: `calc(100% - 32px)`, borderColor: dividercolor }}
-          ></Divider>
-          <Box sx={{ mt: 1.5, mb: "10px" }}>
-            <Grid2 container spacing={{ xs: 1, lg: 1 }}>
-              <Grid2 size={{ xs: 12, sm: 6, md: 6, lg: 6 }}>
-                <ProfileMore
-                  id="Merge"
-                  onSave={async (prev, curr) => {
-                    if (prev !== curr) {
-                      await onEnhance(false);
-                    }
-                  }}
-                />
-              </Grid2>
-              <Grid2 size={{ xs: 12, sm: 6, md: 6, lg: 6 }}>
-                <ProfileMore
-                  id="Script"
-                  logInfo={chainLogs["Script"]}
-                  onSave={async (prev, curr) => {
-                    if (prev !== curr) {
-                      await onEnhance(false);
-                    }
-                  }}
-                />
-              </Grid2>
             </Grid2>
           </Box>
         </Box>
