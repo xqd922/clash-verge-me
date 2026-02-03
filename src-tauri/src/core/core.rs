@@ -1,5 +1,6 @@
 use crate::config::*;
 use crate::core::{clash_api, handle, service};
+#[cfg(target_os = "macos")]
 use crate::core::tray::Tray;
 use crate::log_err;
 use crate::utils::{dirs, help};
@@ -58,11 +59,15 @@ impl CoreManager {
             log::info!(target: "app", "Stopping sidecar");
             #[cfg(target_os = "windows")]
             {
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x08000000;
                 let _ = std::process::Command::new("taskkill")
                     .args(["/F", "/IM", "verge-mihomo.exe"])
+                    .creation_flags(CREATE_NO_WINDOW)
                     .output();
                 let _ = std::process::Command::new("taskkill")
                     .args(["/F", "/IM", "verge-mihomo-alpha.exe"])
+                    .creation_flags(CREATE_NO_WINDOW)
                     .output();
             }
             #[cfg(not(target_os = "windows"))]
@@ -159,27 +164,25 @@ impl CoreManager {
         }
 
         log::info!(target: "app", "change core to `{clash_core}`");
-        
+
         // 1. 先更新内核配置（但不应用）
         Config::verge().draft().clash_core = Some(clash_core);
-        
+
         // 2. 使用新内核验证配置
-        println!("[切换内核] 使用新内核验证配置");
         match self.validate_config().await {
             Ok((true, _)) => {
-                println!("[切换内核] 配置验证通过，开始切换内核");
                 // 3. 验证通过后，应用内核配置并重启
                 Config::verge().apply();
                 log_err!(Config::verge().latest().save_file());
-                
+
                 match self.restart_core().await {
                     Ok(_) => {
-                        println!("[切换内核] 内核切换成功");
+                        log::info!(target: "app", "core change successful");
                         Config::runtime().apply();
                         Ok(())
                     }
                     Err(err) => {
-                        println!("[切换内核] 内核切换失败: {}", err);
+                        log::error!(target: "app", "core change failed: {}", err);
                         Config::verge().discard();
                         Config::runtime().discard();
                         Err(err)
@@ -187,26 +190,26 @@ impl CoreManager {
                 }
             }
             Ok((false, error_msg)) => {
-                println!("[切换内核] 配置验证失败: {}", error_msg);
+                log::warn!(target: "app", "config validation failed for new core: {}", error_msg.trim());
                 // 使用默认配置并继续切换内核
                 self.use_default_config("config_validate::core_change", &error_msg).await?;
                 Config::verge().apply();
                 log_err!(Config::verge().latest().save_file());
-                
+
                 match self.restart_core().await {
                     Ok(_) => {
-                        println!("[切换内核] 内核切换成功（使用默认配置）");
+                        log::info!(target: "app", "core change successful (default config)");
                         Ok(())
                     }
                     Err(err) => {
-                        println!("[切换内核] 内核切换失败: {}", err);
+                        log::error!(target: "app", "core change failed: {}", err);
                         Config::verge().discard();
                         Err(err)
                     }
                 }
             }
             Err(err) => {
-                println!("[切换内核] 验证过程发生错误: {}", err);
+                log::error!(target: "app", "validation error during core change: {}", err);
                 Config::verge().discard();
                 Err(err)
             }
@@ -215,19 +218,16 @@ impl CoreManager {
 
     /// 内部验证配置文件的实现
     async fn validate_config_internal(&self, config_path: &str) -> Result<(bool, String)> {
-        println!("[core配置验证] 开始验证配置文件: {}", config_path);
-        
+        log::debug!(target: "app", "validating config: {}", config_path);
+
         let clash_core = { Config::verge().latest().clash_core.clone() };
         let clash_core = clash_core.unwrap_or("verge-mihomo".into());
-        println!("[core配置验证] 使用内核: {}", clash_core);
-        
+
         let app_handle = handle::Handle::global().app_handle().unwrap();
         let test_dir = dirs::app_home_dir()?.join("test");
         let test_dir = dirs::path_to_str(&test_dir)?;
-        println!("[core配置验证] 测试目录: {}", test_dir);
 
         // 使用子进程运行clash验证配置
-        println!("[core配置验证] 运行子进程验证配置");
         let output = app_handle
             .shell()
             .sidecar(clash_core)?
@@ -237,23 +237,16 @@ impl CoreManager {
 
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        
+
         // 检查进程退出状态和错误输出
         let error_keywords = ["FATA", "fatal", "Parse config error", "level=fatal"];
         let has_error = !output.status.success() || error_keywords.iter().any(|&kw| stderr.contains(kw));
-        
-        println!("\n[core配置验证] -------- 验证结果 --------");
-        println!("[core配置验证] 进程退出状态: {:?}", output.status);
-    
+
         if !stderr.is_empty() {
-            println!("[core配置验证] stderr输出:\n{}", stderr);
-        }
-        if !stdout.is_empty() {
-            println!("[core配置验证] stdout输出:\n{}", stdout);
+            log::debug!(target: "app", "validate stderr: {}", stderr.trim());
         }
 
         if has_error {
-            println!("[core配置验证] 发现错误，开始处理错误信息");
             let error_msg = if !stdout.is_empty() {
                 stdout.to_string()
             } else if !stderr.is_empty() {
@@ -264,11 +257,10 @@ impl CoreManager {
                 "验证进程被终止".to_string()
             };
 
-            println!("[core配置验证] -------- 验证结束 --------\n");
-            Ok((false, error_msg))  // 返回错误消息给调用者处理
+            log::warn!(target: "app", "config validation failed: {}", error_msg.trim());
+            Ok((false, error_msg))
         } else {
-            println!("[core配置验证] 验证成功");
-            println!("[core配置验证] -------- 验证结束 --------\n");
+            log::debug!(target: "app", "config validation passed");
             Ok((true, String::new()))
         }
     }
@@ -379,43 +371,35 @@ impl CoreManager {
 
     /// 更新proxies等配置
     pub async fn update_config(&self) -> Result<(bool, String)> {
-        println!("[core配置更新] 开始更新配置");
-        
+        log::debug!(target: "app", "updating config");
+
         // 1. 先生成新的配置内容
-        println!("[core配置更新] 生成新的配置内容");
         Config::generate().await?;
-        
+
         // 2. 生成临时文件并进行验证
-        println!("[core配置更新] 生成临时配置文件用于验证");
-        let temp_config = Config::generate_file(ConfigType::Check)?;
-        let temp_config = dirs::path_to_str(&temp_config)?;
-        println!("[core配置更新] 临时配置文件路径: {}", temp_config);
+        Config::generate_file(ConfigType::Check)?;
 
         // 3. 验证配置
         match self.validate_config().await {
             Ok((true, _)) => {
-                println!("[core配置更新] 配置验证通过");
                 // 4. 验证通过后，生成正式的运行时配置
-                println!("[core配置更新] 生成运行时配置");
                 let run_path = Config::generate_file(ConfigType::Run)?;
                 let run_path = dirs::path_to_str(&run_path)?;
 
                 // 5. 应用新配置
-                println!("[core配置更新] 应用新配置");
                 for i in 0..3 {
                     match clash_api::put_configs(run_path).await {
                         Ok(_) => {
-                            println!("[core配置更新] 配置应用成功");
+                            log::debug!(target: "app", "config applied successfully");
                             Config::runtime().apply();
                             return Ok((true, String::new()));
                         }
                         Err(err) => {
                             if i < 2 {
-                                println!("[core配置更新] 第{}次重试应用配置", i + 1);
-                                log::info!(target: "app", "{err}");
+                                log::info!(target: "app", "retrying config apply: {err}");
                                 sleep(Duration::from_millis(100)).await;
                             } else {
-                                println!("[core配置更新] 配置应用失败: {}", err);
+                                log::warn!(target: "app", "config apply failed: {}", err);
                                 Config::runtime().discard();
                                 return Ok((false, err.to_string()));
                             }
@@ -425,12 +409,12 @@ impl CoreManager {
                 Ok((true, String::new()))
             }
             Ok((false, error_msg)) => {
-                println!("[core配置更新] 配置验证失败: {}", error_msg);
+                log::warn!(target: "app", "config validation failed: {}", error_msg.trim());
                 Config::runtime().discard();
                 Ok((false, error_msg))
             }
             Err(e) => {
-                println!("[core配置更新] 验证过程发生错误: {}", e);
+                log::error!(target: "app", "config validation error: {}", e);
                 Config::runtime().discard();
                 Err(e)
             }

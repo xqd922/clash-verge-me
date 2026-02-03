@@ -126,18 +126,14 @@ pub fn resolve_reset() {
 
 /// create main window
 pub fn create_window() {
-    println!("Starting to create window");
-    log::info!(target: "app", "Starting to create window");
+    log::debug!(target: "app", "create_window called");
 
     let app_handle = handle::Handle::global().app_handle().unwrap();
 
     if let Some(window) = handle::Handle::global().get_window() {
-        println!("Found existing window, trying to show it");
-        log::info!(target: "app", "Found existing window, trying to show it");
+        log::debug!(target: "app", "showing existing window");
 
         if window.is_minimized().unwrap_or(false) {
-            println!("Window is minimized, unminimizing");
-            log::info!(target: "app", "Window is minimized, unminimizing");
             let _ = window.unminimize();
         }
         let _ = window.show();
@@ -145,8 +141,7 @@ pub fn create_window() {
         return;
     }
 
-    println!("Creating new window");
-    log::info!(target: "app", "Creating new window");
+    log::info!(target: "app", "creating new window");
 
     #[cfg(target_os = "windows")]
     let window = tauri::WebviewWindowBuilder::new(
@@ -192,17 +187,15 @@ pub fn create_window() {
 
     match window {
         Ok(window) => {
-            println!("Window created successfully, attempting to show");
-            log::info!(target: "app", "Window created successfully, attempting to show");
+            log::info!(target: "app", "window created successfully");
             let _ = window.show();
             let _ = window.set_focus();
-            
+
             // 设置窗口状态监控，实时保存窗口位置和大小
             crate::feat::setup_window_state_monitor(&app_handle);
         }
         Err(e) => {
-            println!("Failed to create window: {:?}", e);
-            log::error!(target: "app", "Failed to create window: {:?}", e);
+            log::error!(target: "app", "failed to create window: {:?}", e);
         }
     }
 }

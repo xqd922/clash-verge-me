@@ -75,23 +75,23 @@ impl Config {
 
         let validation_result = if let Ok(_) = config_result {
             // 验证配置文件
-            println!("[首次启动] 开始验证配置");
-            
+            log::info!(target: "app", "validating initial config");
+
             match CoreManager::global().validate_config().await {
                 Ok((is_valid, error_msg)) => {
                     if !is_valid {
-                        println!("[首次启动] 配置验证失败，使用默认最小配置启动: {}", error_msg);
+                        log::warn!(target: "app", "initial config invalid, using defaults: {}", error_msg.trim());
                         CoreManager::global()
                             .use_default_config("config_validate::boot_error", &error_msg)
                             .await?;
                         Some(("config_validate::boot_error", error_msg))
                     } else {
-                        println!("[首次启动] 配置验证成功");
+                        log::info!(target: "app", "initial config valid");
                         Some(("config_validate::success", String::new()))
                     }
                 }
                 Err(err) => {
-                    println!("[首次启动] 验证进程执行失败: {}", err);
+                    log::error!(target: "app", "initial config validation failed: {}", err);
                     CoreManager::global()
                         .use_default_config("config_validate::process_terminated", "")
                         .await?;
@@ -99,7 +99,7 @@ impl Config {
                 }
             }
         } else {
-            println!("[首次启动] 生成配置文件失败，使用默认配置");
+            log::warn!(target: "app", "failed to generate config file, using defaults");
             CoreManager::global()
                 .use_default_config(
                     "config_validate::error",

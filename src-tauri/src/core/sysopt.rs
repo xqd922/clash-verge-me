@@ -126,12 +126,12 @@ impl Sysopt {
             if !sys_enable {
                 return self.reset_sysproxy().await;
             }
-            use crate::core::handle::Handle;
             use crate::utils::dirs;
             use anyhow::bail;
-            use tauri_plugin_shell::ShellExt;
+            use std::os::windows::process::CommandExt;
+            use std::process::Command;
 
-            let app_handle = Handle::global().app_handle().unwrap();
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
 
             let binary_path = dirs::service_path()?;
             let sysproxy_exe = binary_path.with_file_name("sysproxy.exe");
@@ -139,26 +139,19 @@ impl Sysopt {
                 bail!("sysproxy.exe not found");
             }
 
-            let shell = app_handle.shell();
             let output = if pac_enable {
                 let address = format!("http://{}:{}/commands/pac", "127.0.0.1", pac_port);
-                let output = shell
-                    .command(sysproxy_exe.as_path().to_str().unwrap())
+                Command::new(&sysproxy_exe)
                     .args(["pac", address.as_str()])
-                    .output()
-                    .await
-                    .unwrap();
-                output
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output()?
             } else {
                 let address = format!("{}:{}", "127.0.0.1", port);
                 let bypass = get_bypass();
-                let output = shell
-                    .command(sysproxy_exe.as_path().to_str().unwrap())
+                Command::new(&sysproxy_exe)
                     .args(["global", address.as_str(), bypass.as_ref()])
-                    .output()
-                    .await
-                    .unwrap();
-                output
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output()?
             };
 
             if !output.status.success() {
@@ -185,12 +178,12 @@ impl Sysopt {
 
         #[cfg(target_os = "windows")]
         {
-            use crate::core::handle::Handle;
             use crate::utils::dirs;
             use anyhow::bail;
-            use tauri_plugin_shell::ShellExt;
+            use std::os::windows::process::CommandExt;
+            use std::process::Command;
 
-            let app_handle = Handle::global().app_handle().unwrap();
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
 
             let binary_path = dirs::service_path()?;
             let sysproxy_exe = binary_path.with_file_name("sysproxy.exe");
@@ -199,13 +192,10 @@ impl Sysopt {
                 bail!("sysproxy.exe not found");
             }
 
-            let shell = app_handle.shell();
-            let output = shell
-                .command(sysproxy_exe.as_path().to_str().unwrap())
+            let output = Command::new(&sysproxy_exe)
                 .args(["set", "1"])
-                .output()
-                .await
-                .unwrap();
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()?;
 
             if !output.status.success() {
                 bail!("sysproxy exe run failed");
@@ -305,11 +295,11 @@ impl Sysopt {
 
                 #[cfg(target_os = "windows")]
                 {
-                    use crate::core::handle::Handle;
                     use crate::utils::dirs;
-                    use tauri_plugin_shell::ShellExt;
+                    use std::os::windows::process::CommandExt;
+                    use std::process::Command;
 
-                    let app_handle = Handle::global().app_handle().unwrap();
+                    const CREATE_NO_WINDOW: u32 = 0x08000000;
 
                     let binary_path = dirs::service_path().unwrap();
                     let sysproxy_exe = binary_path.with_file_name("sysproxy.exe");
@@ -317,25 +307,20 @@ impl Sysopt {
                         break;
                     }
 
-                    let shell = app_handle.shell();
                     let output = if pac {
                         let address = format!("http://{}:{}/commands/pac", "127.0.0.1", pac_port);
-
-                        shell
-                            .command(sysproxy_exe.as_path().to_str().unwrap())
+                        Command::new(&sysproxy_exe)
                             .args(["pac", address.as_str()])
+                            .creation_flags(CREATE_NO_WINDOW)
                             .output()
-                            .await
                             .unwrap()
                     } else {
                         let address = format!("{}:{}", "127.0.0.1", port);
                         let bypass = get_bypass();
-
-                        shell
-                            .command(sysproxy_exe.as_path().to_str().unwrap())
+                        Command::new(&sysproxy_exe)
                             .args(["global", address.as_str(), bypass.as_ref()])
+                            .creation_flags(CREATE_NO_WINDOW)
                             .output()
-                            .await
                             .unwrap()
                     };
                     if !output.status.success() {
